@@ -11,10 +11,9 @@
     #include <stdlib.h>
     #include <stdio.h>
     #include <regex.h>
-    #include <sys/syslimits.h>
 
-    static uint hitCount = 0;
     static size_t MAXB = 512;
+    static size_t MAXPATH = 4096;  /* too bad no OS agnostic params */
 
 /* 
  * 	strings that can be overridden by httpd.conf directives
@@ -58,14 +57,16 @@
 
 /*
  *	link the variable names to httpd.conf directive strings and limit args to 1
+ *	See above, these get lower-cased by apache on fedora02, no matter how they are
+ *	listed in conf file.
 */
     static const command_rec iiifDirectives[] =
     {
-	AP_INIT_TAKE1("ObjectStore", setObjectStore, NULL, ACCESS_CONF, "path to fedora objects"),
-	AP_INIT_TAKE1("DataStore1", setDataStore1, NULL, ACCESS_CONF, "0 path to fedora data"),
-	AP_INIT_TAKE1("DataStore0", setDataStore0, NULL, ACCESS_CONF, "1 path to fedore data"),
-	AP_INIT_TAKE1("LocationPreamble", setLocationPreamble, NULL, ACCESS_CONF, "lead-in for stream value"),
-	AP_INIT_TAKE1("ContentLocationMarker", setContentLocationMarker, NULL, ACCESS_CONF, "string indicating locationline"),
+	AP_INIT_TAKE1("objectstore", setObjectStore, NULL, ACCESS_CONF, "path to fedora objects"),
+	AP_INIT_TAKE1("datastore1", setDataStore1, NULL, ACCESS_CONF, "0 path to fedora data"),
+	AP_INIT_TAKE1("datastore0", setDataStore0, NULL, ACCESS_CONF, "1 path to fedore data"),
+	AP_INIT_TAKE1("locationpreamble", setLocationPreamble, NULL, ACCESS_CONF, "lead-in for stream value"),
+	AP_INIT_TAKE1("contentlocationmarker", setContentLocationMarker, NULL, ACCESS_CONF, "string indicating locationline"),
 	{ NULL }
 	
     };
@@ -227,10 +228,10 @@
 	csptr1 = contentsav;
 	
 
-/*
         cfp = fopen(objFileName, "r");
+/*
+        cfp = fopen("/var/www/html/slbtest/info%3Afedora%2Fuva-lib%3A2295799","r");
 */
-        cfp = fopen("/Library/WebServer/Documents/here/info%3Afedora%2Fuva-lib%3A2295799","r");
 	*contentsav = '\0';
         if (cfp != NULL) {
                 while (fgets(contentbuf,MAXB,cfp)) {
@@ -256,7 +257,7 @@
  *	make the dirs you need to lead up to your link
  */
     static void makepath(const char *dir) {
-        char tmp[PATH_MAX];
+        char tmp[MAXPATH];
         char *p = NULL;
         size_t len;
 
@@ -279,8 +280,9 @@
 
 /*
  *============================================================================
- * The code Apache calls when you hit the directory with setHandler
- *		= iiifLinks
+ * The code Apache calls for each request - have to check handler name 
+ *	that gets set by SetHandler in Directory directive in config
+ *	to see if it's really for you 
  *============================================================================
  */
 	
@@ -318,16 +320,35 @@
 	char *p, *q;
 
 
-	if (!r->handler || strcmp(r->handler, "iiifLinks")) return (DECLINED);
+/*
+ *	Note that the apache on fedora02 seems to lower-case
+ *	arguements to config directives for some reason.
+ */
+	if (!r->handler || strcmp(r->handler, "iiiflinks")) return (DECLINED);
 
 
-	if ((fd = open("/Library/WebServer/Documents/here/rewritten.html",O_WRONLY | O_CREAT)) == -1) {
+	if ((fd = open("/var/www/html/slbtest/rewrittenx", O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG)) == -1) {
 		return HTTP_GONE;
 	}
-
-
+	
         extURLstr = getExtURLfromRequest(r);
 
+	write(fd,extURLstr,strlen(extURLstr));
+	write(fd," ",1);
+	
+	p = strstr(extURLstr,"slbtest");
+	if (p > 0) {
+		*p++ = 'u';
+		*p++ = 'v';
+		*p++ = 'a';
+		*p++ = '-';
+		*p++ = 'l';
+		*p++ = 'i';
+		*p++ = 'b';
+	
+	}
+	
+		
 	write(fd,extURLstr,strlen(extURLstr));
 	write(fd," ",1);
 	
@@ -349,6 +370,16 @@
 
 	contentStream = apr_pcalloc(r->pool,MAXB);
 	getLastContentStr(objFileName,contentStream);
+
+/*
+ *	if you didn't get a content stream for some 
+ *	reason, no point in going on...
+ */
+	if (strlen(contentStream) == 0) {
+		return HTTP_NOT_FOUND;
+	}
+
+
 	p = contentStream;
 	while (*p != '\0') {
 		if (*p == '+') *p = '/';
@@ -378,6 +409,7 @@
 	write(fd," ",1);
 	
 
+	linkFile = "";
 	if (r->args) {
 		p = strstr(r->args,"IIIF=");
 		if (p) {
@@ -403,7 +435,8 @@
 	makepath(buffer);
 	
 	
-	symlink("/Library/WebServer/Documents/here/rewritten.html",linkFile);
+	unlink(linkFile);
+	symlink(streamFileName,linkFile);
 	
 	
 	return OK;
@@ -428,6 +461,16 @@
 
 /*
  *	general plumbing to say where you define hooks and config
+ *		name of module below matches LoadModule directive 
+ *		in conf file
+ *		second-to-last string matches function name in this
+ *			program for connecting config names to 
+ *			function calls for setting the values of
+ *			variables 
+ *		last string matches function name for connecting
+ *			name of an apache callback hook to a 
+ *			function name in this program that gets 
+ *			the callback
  */
     module AP_MODULE_DECLARE_DATA iiifLinks_module = {
         STANDARD20_MODULE_STUFF,
