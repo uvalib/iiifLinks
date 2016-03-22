@@ -23,6 +23,7 @@
     static const char *dataStore1 = "/lib_content39/dataStore/";
     static const char *locationPreamble = "<foxml:contentLocation TYPE=\"INTERNAL_ID\" REF=\"";
     static const char *contentLocationMarker = "content+content";
+    static const char *iipsrvexe = "/usr/libexec/iipsrv/iipsrv.fcgi";
 
 /*
  *	simple conf assignments - pluck string from httpd.conf and set variables
@@ -55,6 +56,11 @@
 	return NULL;
     }
 
+    const char *setIipsrvexe(cmd_parms *cmd, void *cfg, const char *arg) {
+	iipsrvexe = arg;
+	return NULL;
+    }
+
 /*
  *	link the variable names to httpd.conf directive strings and limit args to 1
  *	See above, these get lower-cased by apache on fedora02, no matter how they are
@@ -67,6 +73,7 @@
 	AP_INIT_TAKE1("datastore0", setDataStore0, NULL, ACCESS_CONF, "1 path to fedore data"),
 	AP_INIT_TAKE1("locationpreamble", setLocationPreamble, NULL, ACCESS_CONF, "lead-in for stream value"),
 	AP_INIT_TAKE1("contentlocationmarker", setContentLocationMarker, NULL, ACCESS_CONF, "string indicating locationline"),
+	AP_INIT_TAKE1("iipsrvexe", setIipsrvexe, NULL, ACCESS_CONF, "path iipsrv cgi"),
 	{ NULL }
 	
     };
@@ -207,11 +214,18 @@
                         *pathptr++ = '/';
                 }
         }
-        if ((j - 1)  % 2 ) {
-                pathptr = pathptr - 3;
-        } else {
-                --pathptr;
-        }
+/*
+ *  dupe the behavior in fedora code by
+ *  lopping off the last subdir for some reason
+ */
+	if (j > 2) {
+        	if ((j - 1)  % 2 ) {
+                	pathptr = pathptr - 3;
+        	} else {
+                	--pathptr;
+        	}
+	}
+
         *pathptr = '\0';
     }
 
@@ -292,7 +306,7 @@
  *	original request will be rewritten by httpd.conf rule
  *		to iiif URL with 		
  *		a filename that iiif can handle
- *		as an query string arg 
+ *		as a query string arg 
  *	get the external PID from orginial URL in request
  *	URLencode that, and then perform Adler32 on it
  *	turn the long form alder32 into a binary string
@@ -307,7 +321,6 @@
  */
 	
 	char buffer[512];
-	int fd;
 	char *extURLstr;
 	char *encURLstr;
 	char *binStr;
@@ -324,18 +337,21 @@
  *	Note that the apache on fedora02 seems to lower-case
  *	arguements to config directives for some reason.
  */
-	if (!r->handler || strcmp(r->handler, "iiiflinks")) return (DECLINED);
 
-
-	if ((fd = open("/var/www/html/slbtest/rewrittenx", O_WRONLY|O_CREAT, S_IRWXU|S_IRWXG)) == -1) {
-		return HTTP_GONE;
+	if (!r->handler || strncmp(r->handler,"fcgid-script",12) ) {
+			return (DECLINED);
 	}
+
+	if (!(r->filename) || strncmp(r->filename,iipsrvexe,strlen(iipsrvexe))) {
+			return (DECLINED);
+	}
+
+
 	
         extURLstr = getExtURLfromRequest(r);
 
-	write(fd,extURLstr,strlen(extURLstr));
-	write(fd," ",1);
 	
+/* take this out when it is for real */
 	p = strstr(extURLstr,"slbtest");
 	if (p > 0) {
 		*p++ = 'u';
@@ -347,10 +363,6 @@
 		*p++ = 'b';
 	
 	}
-	
-		
-	write(fd,extURLstr,strlen(extURLstr));
-	write(fd," ",1);
 	
 	
         encURLstr = apr_pcalloc(r->pool,((strlen(extURLstr) * 3) + 1));
@@ -365,8 +377,6 @@
 
 	objFileName = apr_psprintf(r->pool,"%s%s%s",objectStore,pathSection,encURLstr);
 
-	write(fd,objFileName,strlen(objFileName));
-	write(fd," ",1);
 
 	contentStream = apr_pcalloc(r->pool,MAXB);
 	getLastContentStr(objFileName,contentStream);
@@ -376,7 +386,7 @@
  *	reason, no point in going on...
  */
 	if (strlen(contentStream) == 0) {
-		return HTTP_NOT_FOUND;
+		return (DECLINED);
 	}
 
 
@@ -401,12 +411,15 @@
 
 	if (*pathSection == '0') {
 		streamFileName = apr_psprintf(r->pool,"%s%s%s",dataStore0,pathSection+3,encURLstr);
-	} else {
+	} else if (*pathSection == '1') {
 		streamFileName = apr_psprintf(r->pool,"%s%s%s",dataStore1,pathSection+3,encURLstr);
+	} else {
+/*    
+ *	something bad happened, just give up
+ */
+		return (DECLINED);
 	}
 		
-	write(fd,streamFileName,strlen(streamFileName));
-	write(fd," ",1);
 	
 
 	linkFile = "";
@@ -426,8 +439,6 @@
 		}
 	}
 			
-	write(fd,linkFile,strlen(linkFile));
-	write(fd," ",1);
 	
 	strcpy(buffer,linkFile);
 	char *endofpath = strrchr(buffer,'/');
@@ -455,7 +466,7 @@
  */
 	
     static void iiifRegisterHooks(apr_pool_t *p) {
-	ap_hook_fixups(iiifLinks, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_fixups(iiifLinks, NULL, NULL, APR_HOOK_FIRST);
     }
 
 
