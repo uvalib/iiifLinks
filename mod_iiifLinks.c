@@ -276,6 +276,8 @@
         size_t len;
 
         snprintf(tmp, sizeof(tmp),"%s",dir);
+	p = strrchr(tmp,'/');
+	if (p) *p = '\0';
         len = strlen(tmp);
 	if (len < 2) return;
 	if (tmp[0] != '/') return;
@@ -287,7 +289,7 @@
                         mkdir(tmp,  S_IRWXU | S_IRWXG | S_IRUSR | S_IXUSR);
                         *p = '/';
                 }
-        mkdir(tmp, S_IRWXU);
+        mkdir(tmp, S_IRWXU | S_IRWXG | S_IRUSR | S_IXUSR); 
     }
 	
 
@@ -320,7 +322,6 @@
  *		so that rewritten iiif URL will work
  */
 	
-	char buffer[512];
 	char *extURLstr;
 	char *encURLstr;
 	char *binStr;
@@ -334,15 +335,22 @@
 
 
 /*
- *	Note that the apache on fedora02 seems to lower-case
- *	arguements to config directives for some reason.
+ *	since we cant use handler of our own
+ *	we need to do some sleuthing for our kind of request
+ *	should be fcgi which resolved to iipsrv exe and
+ *	be trying to grab a file rewritten to our simplified
+ *	link tree in uva-lib subdir in doc area
  */
 
-	if (!r->handler || strncmp(r->handler,"fcgid-script",12) ) {
+	if (!r->handler || strcmp(r->handler,"fcgid-script") ) {
 			return (DECLINED);
 	}
 
-	if (!(r->filename) || strncmp(r->filename,iipsrvexe,strlen(iipsrvexe))) {
+	if (!r->args || !strstr(r->args,"IIIF=/var/www/html/uva-lib/")) {
+		return (DECLINED);
+	}
+
+	if (!(r->filename) || strcmp(r->filename,iipsrvexe) ) {
 			return (DECLINED);
 	}
 
@@ -350,20 +358,6 @@
 	
         extURLstr = getExtURLfromRequest(r);
 
-	
-/* take this out when it is for real */
-	p = strstr(extURLstr,"slbtest");
-	if (p > 0) {
-		*p++ = 'u';
-		*p++ = 'v';
-		*p++ = 'a';
-		*p++ = '-';
-		*p++ = 'l';
-		*p++ = 'i';
-		*p++ = 'b';
-	
-	}
-	
 	
         encURLstr = apr_pcalloc(r->pool,((strlen(extURLstr) * 3) + 1));
 	encodeURL(extURLstr,encURLstr);
@@ -430,22 +424,13 @@
 			q = strstr(p,".jp2");
 			if ((q) && (p < q)) {
 				q +=4;
-				linkFile = apr_pstrmemdup(r->pool,p,q-p);
-			} else {
-				linkFile = "no jp2"; 
+				linkFile = apr_pstrndup(r->pool,p,q-p);
 			}
-		} else {
-			linkFile = "no IIIF";
 		}
 	}
 			
 	
-	strcpy(buffer,linkFile);
-	char *endofpath = strrchr(buffer,'/');
-	if (endofpath) *endofpath = '\0';
-	makepath(buffer);
-	
-	
+	makepath(linkFile);
 	unlink(linkFile);
 	symlink(streamFileName,linkFile);
 	
