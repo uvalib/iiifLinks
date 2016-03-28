@@ -24,6 +24,7 @@
     static const char *locationPreamble = "<foxml:contentLocation TYPE=\"INTERNAL_ID\" REF=\"";
     static const char *contentLocationMarker = "content+content";
     static const char *iipsrvexe = "/usr/libexec/iipsrv/iipsrv.fcgi";
+    static const char *arglocation = "/var/www/html/uva-lib/";
 
 /*
  *	simple conf assignments - pluck string from httpd.conf and set variables
@@ -60,6 +61,11 @@
 	iipsrvexe = arg;
 	return NULL;
     }
+    
+    const char *setArglocation(cmd_parms *cmd, void *cfg, const char *arg) {
+	arglocation = arg;
+	return NULL;
+    }
 
 /*
  *	link the variable names to httpd.conf directive strings and limit args to 1
@@ -74,6 +80,7 @@
 	AP_INIT_TAKE1("locationpreamble", setLocationPreamble, NULL, ACCESS_CONF, "lead-in for stream value"),
 	AP_INIT_TAKE1("contentlocationmarker", setContentLocationMarker, NULL, ACCESS_CONF, "string indicating locationline"),
 	AP_INIT_TAKE1("iipsrvexe", setIipsrvexe, NULL, ACCESS_CONF, "path iipsrv cgi"),
+	AP_INIT_TAKE1("arglocation", setArglocation, NULL, ACCESS_CONF, "directory for generated links"),
 	{ NULL }
 	
     };
@@ -346,7 +353,9 @@
 			return (DECLINED);
 	}
 
-	if (!r->args || !strstr(r->args,"IIIF=/var/www/html/uva-lib/")) {
+	linkFile = apr_psprintf(r->pool,"%s=%s","IIIF",arglocation);
+		
+	if (!r->args || !strstr(r->args,linkFile)) {
 		return (DECLINED);
 	}
 
