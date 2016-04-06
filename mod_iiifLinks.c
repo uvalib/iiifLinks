@@ -99,7 +99,7 @@
 
     char *getExtURLfromRequest(request_rec *r) {
 
-	const char *regex_text = "iiif/([^:]*):([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{1})?/full(.*)$";
+	const char *regex_text = "iiif/([^:]*):([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{2})?([[:digit:]]{1})?/(.*)$";
 	int max_matches = 8;
 	regmatch_t mymatches[max_matches];
 	int status = 0;
