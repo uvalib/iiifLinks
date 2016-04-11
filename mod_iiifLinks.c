@@ -338,6 +338,7 @@
 	char *contentStream;
 	char *streamFileName;
 	char *linkFile;
+	char *tempFile;
 	char *p, *q;
 
 
@@ -439,11 +440,20 @@
 	}
 			
 	
+	
 	makepath(linkFile);
-	unlink(linkFile);
-	symlink(streamFileName,linkFile);
-	
-	
+	tempFile = apr_pstrcat(r->pool,linkFile,"temp",NULL);
+/*      
+ *      Assume if symlink fails, someone else is already there doing rename 
+ *      at any rate, no use doing rename..
+ *	but if you made symlink and rename fails, then you should clean up.
+ */
+
+	if (symlink(streamFileName,tempFile) == 0) {
+		if (rename(tempFile,linkFile) != 0) {
+			unlink(tempFile);
+		}
+	}
 	return OK;
     }
 	
