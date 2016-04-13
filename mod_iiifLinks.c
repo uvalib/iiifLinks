@@ -340,6 +340,7 @@
 	char *linkFile;
 	char *tempFile;
 	char *p, *q;
+	struct stat objFileStat, linkFileStat;
 
 
 /*
@@ -364,6 +365,22 @@
 			return (DECLINED);
 	}
 
+/*
+ *	store away the file you are going to soft link from
+ *         for later linking and/or for mod date compare
+ */
+	linkFile = "";
+	if (r->args) {
+		p = strstr(r->args,"IIIF=");
+		if (p) {
+			p +=5;
+			q = strstr(p,".jp2");
+			if ((q) && (p < q)) {
+				q +=4;
+				linkFile = apr_pstrndup(r->pool,p,q-p);
+			}
+		}
+	}
 
 	
         extURLstr = getExtURLfromRequest(r);
@@ -380,6 +397,20 @@
 	getPathStr(binStr,pathSection);
 
 	objFileName = apr_psprintf(r->pool,"%s%s%s",objectStore,pathSection,encURLstr);
+
+/*
+ 8      if the file you're about to link from exists,
+ *         see if the object file has been updated since it was created
+ *         if not, just keep using the existing link
+ */
+	
+	if (lstat(linkFile,&linkFileStat) == 0) {
+		if (stat(objFileName,&objFileStat) == 0) {
+			if (linkFileStat.st_ctime >= objFileStat.st_mtime) {
+				return OK;
+			}
+		}
+	}
 
 
 	contentStream = apr_pcalloc(r->pool,MAXB);
@@ -426,18 +457,6 @@
 		
 	
 
-	linkFile = "";
-	if (r->args) {
-		p = strstr(r->args,"IIIF=");
-		if (p) {
-			p +=5;
-			q = strstr(p,".jp2");
-			if ((q) && (p < q)) {
-				q +=4;
-				linkFile = apr_pstrndup(r->pool,p,q-p);
-			}
-		}
-	}
 			
 	
 	
